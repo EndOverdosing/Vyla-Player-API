@@ -24,10 +24,7 @@ const PROXY_PATTERNS = {
 function unwrapProxy(url) {
     try {
         const origin = new URL(url).origin;
-        const patterns = [
-            ...(PROXY_PATTERNS[origin] ?? []),
-            ...PROXY_PATTERNS["*"],
-        ];
+        const patterns = [...(PROXY_PATTERNS[origin] ?? []), ...PROXY_PATTERNS["*"]];
         for (const p of patterns) {
             const m = url.match(p);
             if (m?.[1]) {
@@ -56,35 +53,64 @@ export async function onRequestGet({ request }) {
     const filename = searchParams.get("filename") || "download.mp4";
 
     if (!encodedUrl) {
-        return Response.json({ error: "Missing url" }, { status: 400, headers: CORS });
+        return Response.json({
+            success: false,
+            error: "Missing url parameter",
+            usage: {
+                download: "/api/download?url=<encoded_url>&filename=<name.mp4>",
+                info: "/api/download?url=<encoded_url>&info=1",
+            },
+        }, { status: 400, headers: CORS });
     }
 
     const rawUrl = decodeURIComponent(encodedUrl);
     const url = unwrapProxy(rawUrl);
-
     const isHakunaya = url.includes("hakunaymatata");
+
+    const fetchHeaders = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6884.98 Safari/537.36",
+        ...(isHakunaya
+            ? { Referer: "https://lok-lok.cc/", Origin: "https://lok-lok.cc/" }
+            : { Referer: "https://02movie.com/", Origin: "https://02movie.com" }),
+    };
+
+    if (searchParams.get("info") === "1") {
+        let upstream;
+        try {
+            upstream = await fetch(url, { method: "HEAD", headers: fetchHeaders });
+        } catch (e) {
+            return Response.json({ success: false, error: "Fetch failed: " + e.message }, { status: 502, headers: CORS });
+        }
+
+        const contentLength = upstream.headers.get("content-length");
+
+        return Response.json({
+            success: upstream.ok,
+            resolved_url: url,
+            original_url: rawUrl,
+            filename,
+            status: upstream.status,
+            content_type: upstream.headers.get("content-type"),
+            content_length: contentLength ? parseInt(contentLength) : null,
+            content_length_mb: contentLength ? parseFloat((parseInt(contentLength) / 1024 / 1024).toFixed(2)) : null,
+            accept_ranges: upstream.headers.get("accept-ranges"),
+            last_modified: upstream.headers.get("last-modified"),
+            download_url: "/api/download?url=" + encodedUrl + "&filename=" + encodeURIComponent(filename),
+        }, { headers: CORS });
+    }
 
     let upstream;
     try {
         upstream = await fetch(url, {
-            headers: {
-                "User-Agent":
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6884.98 Safari/537.36",
-                ...(isHakunaya
-                    ? { Referer: "https://lok-lok.cc/", Origin: "https://lok-lok.cc/" }
-                    : { Referer: "https://02movie.com/", Origin: "https://02movie.com" }),
-            },
+            headers: fetchHeaders,
             cf: { cacheTtl: 3600, cacheEverything: true },
         });
     } catch (e) {
-        return Response.json({ error: "Fetch failed: " + e.message }, { status: 502, headers: CORS });
+        return Response.json({ success: false, error: "Fetch failed: " + e.message }, { status: 502, headers: CORS });
     }
 
     if (!upstream.ok) {
-        return Response.json(
-            { error: "Upstream returned " + upstream.status },
-            { status: 502, headers: CORS }
-        );
+        return Response.json({ success: false, error: "Upstream returned " + upstream.status }, { status: 502, headers: CORS });
     }
 
     const contentType = upstream.headers.get("content-type") || "video/mp4";

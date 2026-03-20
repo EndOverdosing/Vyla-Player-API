@@ -2,115 +2,44 @@
 
 # vyla-api
 
-Multi-provider media stream scraper running entirely on Cloudflare Pages Functions. No backend, no Python — just deploy and use.
+A Cloudflare Pages API for scraping and streaming movies and TV shows via TMDB IDs. Aggregates sources from multiple providers, proxies streams to handle CORS, and serves a zero-UI embedded player.
 
 ---
 
-## How it works
-
-Sources are scraped in parallel from 8 providers (VidZee, VidRock, VixSrc, VidSrc, Uembed, RgShows, 02MovieDownloader, 02Embed). Results are deduplicated, sorted by quality, and filtered to English-only audio before being returned. Third-party proxy URLs are automatically unwrapped to their real upstream before being passed through the built-in proxy.
+## Base URL
 
 ```
-Client
-  │
-  ▼
-Cloudflare Pages (vyla-api)
-  ├── GET /api/stream/movie   → scrape movie sources (all providers)
-  ├── GET /api/stream/tv      → scrape TV episode sources (all providers)
-  ├── GET /api/stream/scraper → combined endpoint (type param)
-  ├── GET /api/proxy          → stream proxy + M3U8 rewriter
-  └── GET /api/download       → forced file download
+https://vyla-api.pages.dev
 ```
 
 ---
 
-## Repo layout
+## Endpoints
 
+### `GET /api/movie`
+Scrape all available sources for a movie.
+
+**Parameters**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `id` | string | ✅ | TMDB movie ID |
+
+**Example**
 ```
-├── functions/
-│   ├── _lib/
-│   │   ├── scraper.js        ← all provider logic + English filter
-│   │   └── proxy.js          ← stream proxy + M3U8 segment rewriting
-│   └── api/
-│       ├── stream/
-│       │   ├── movie.js      ← /api/stream/movie
-│       │   ├── tv.js         ← /api/stream/tv
-│       │   └── scraper.js    ← /api/stream/scraper
-│       ├── download.js       ← /api/download
-│       └── proxy.js          ← /api/proxy
-├── public/
-│   └── index.html
-├── wrangler.toml
-├── package.json
-├── .gitignore
-└── README.md
+/api/movie?id=27205
 ```
 
-> `_lib/` uses the `_` prefix so Cloudflare Pages treats it as a shared module folder rather than a route.
-
----
-
-## Local dev
-
-```bash
-npm install
-wrangler pages dev
-```
-
-Test:
-
-```
-GET http://127.0.0.1:8788/api/stream/movie?id=550
-GET http://127.0.0.1:8788/api/stream/tv?id=456&season=1&episode=1
-```
-
----
-
-## Deploy to Cloudflare Pages
-
-### Option A — Git (recommended)
-
-1. Push this repo to GitHub
-2. Cloudflare dashboard → **Workers & Pages → Create → Pages → Connect to Git**
-3. Select your repo, set build output directory to `public`, leave build command blank
-4. Deploy
-
-Every push to `main` redeploys automatically.
-
-### Option B — CLI
-
-```bash
-wrangler pages deploy ./public --project-name=vyla-api
-```
-
----
-
-## API reference
-
-All endpoints return `Access-Control-Allow-Origin: *` and support `OPTIONS` preflight — works from any origin.
-
----
-
-### `GET /api/stream/movie`
-
-| Param | Required | Description |
-|---|---|---|
-| `id` | ✅ | TMDB movie ID |
-
-```
-GET /api/stream/movie?id=550
-```
-
+**Response**
 ```json
 {
   "success": true,
-  "results_found": 12,
+  "results_found": 4,
   "sources": [
     {
       "url": "https://...",
       "type": "hls",
       "quality": "1080p",
-      "provider": "VidZee",
+      "provider": "VixSrc",
       "audioTracks": [{ "language": "eng", "label": "English" }],
       "headers": { "Referer": "https://..." }
     }
@@ -125,120 +54,267 @@ GET /api/stream/movie?id=550
 }
 ```
 
-`success` is `false` if no valid sources were found. Sources are sorted highest quality first. Only English audio tracks are returned.
+---
+
+### `GET /api/tv`
+Scrape all available sources for a TV episode.
+
+**Parameters**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `id` | string | ✅ | TMDB series ID |
+| `season` | string | ❌ | Season number (default: `1`) |
+| `episode` | string | ❌ | Episode number (default: `1`) |
+
+**Example**
+```
+/api/tv?id=1396&season=1&episode=1
+```
+
+---
+
+### `GET /api/stream/movie`
+Same as `/api/movie` but nested under the `/stream` path.
+
+```
+/api/stream/movie?id=27205
+```
 
 ---
 
 ### `GET /api/stream/tv`
-
-| Param | Required | Default | Description |
-|---|---|---|---|
-| `id` | ✅ | — | TMDB series ID |
-| `season` | ❌ | `1` | Season number |
-| `episode` | ❌ | `1` | Episode number |
+Same as `/api/tv` but nested under the `/stream` path.
 
 ```
-GET /api/stream/tv?id=456&season=1&episode=1
+/api/stream/tv?id=1396&season=2&episode=3
 ```
-
-Response shape is identical to `/api/stream/movie`.
 
 ---
 
 ### `GET /api/stream/scraper`
+Generic scraper endpoint supporting both types via a `type` param.
 
-Combined endpoint — pass `type` instead of using separate movie/tv routes.
+**Parameters**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `id` | string | ✅ | TMDB ID |
+| `type` | string | ✅ | `movie` or `tv` |
+| `season` | string | ❌ | Season (TV only) |
+| `episode` | string | ❌ | Episode (TV only) |
 
-| Param | Required | Default | Description |
-|---|---|---|---|
-| `id` | ✅ | — | TMDB ID |
-| `type` | ❌ | `movie` | `movie` or `tv` |
-| `season` | ❌ | `1` | Season number (TV only) |
-| `episode` | ❌ | `1` | Episode number (TV only) |
-
+**Example**
 ```
-GET /api/stream/scraper?id=550&type=movie
-GET /api/stream/scraper?id=456&type=tv&season=2&episode=5
+/api/stream/scraper?id=1396&type=tv&season=1&episode=1
 ```
+
+---
+
+### `GET /api/player`
+Returns a fullscreen embedded HTML video player that scrapes and streams the content directly in the browser. No UI controls — pure video.
+
+**Parameters**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `id` | string | ✅ | TMDB ID |
+| `type` | string | ❌ | `movie` or `tv` (default: `movie`) |
+| `season` | string | ❌ | Season (TV only, default: `1`) |
+| `episode` | string | ❌ | Episode (TV only, default: `1`) |
+
+**Examples**
+```
+/api/player?type=movie&id=27205
+/api/player?type=tv&id=1396&season=1&episode=1
+```
+
+HLS streams are played via HLS.js. If the first source fails, the player automatically falls through to the next available source. Subtitles are injected as native `<track>` elements when available.
 
 ---
 
 ### `GET /api/proxy`
+Proxies any URL through Cloudflare, handling CORS and required referer/origin headers. Rewrites m3u8 playlists so all segment URLs are also proxied.
 
-Proxies any upstream URL through Cloudflare. M3U8 playlists are automatically parsed and all segment/key URLs are rewritten to route through this same proxy — so HLS streams play without CORS issues in any player.
+**Parameters**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `url` | string | ✅ | URL-encoded target URL |
+| `headers` | string | ❌ | Base64-encoded JSON of additional request headers |
 
-| Param | Required | Description |
-|---|---|---|
-| `url` | ✅ | URL-encoded target URL |
-| `headers` | ❌ | Base64-encoded JSON of extra request headers |
-
+**Examples**
 ```
-GET /api/proxy?url=https%3A%2F%2Fexample.com%2Fvideo.m3u8
-GET /api/proxy?url=...&headers=eyJSZWZlcmVyIjoiaHR0cHM6Ly9leGFtcGxlLmNvbS8ifQ==
+/api/proxy?url=https%3A%2F%2Fexample.com%2Fstream.m3u8
+/api/proxy?url=https%3A%2F%2Fexample.com%2Fvideo.mp4&headers=eyJSZWZlcmVyIjoiaHR0cHM6Ly9leGFtcGxlLmNvbSJ9
 ```
 
-Append `/download` to the path to force a `Content-Disposition: attachment` response.
+Supports `GET` and `HEAD`. Private IPs and localhost are blocked.
 
 ---
 
 ### `GET /api/download`
+Downloads a video file and streams it to the browser with proper headers.
 
-Forces a file download with a `Content-Disposition: attachment` header. Useful for triggering browser save dialogs.
+**Parameters**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `url` | string | ✅ | URL-encoded video URL |
+| `filename` | string | ❌ | Output filename (default: `download.mp4`) |
+| `info` | string | ❌ | Set to `1` to return JSON metadata instead of the file |
 
-| Param | Required | Default | Description |
-|---|---|---|---|
-| `url` | ✅ | — | URL-encoded target URL |
-| `filename` | ❌ | `download.mp4` | Output filename |
-
+**Download a file**
 ```
-GET /api/download?url=https%3A%2F%2Fexample.com%2Fvideo.mp4&filename=fight-club.mp4
+/api/download?url=https%3A%2F%2Fexample.com%2Fvideo.mp4&filename=inception.mp4
+```
+
+**Get file metadata**
+```
+/api/download?url=https%3A%2F%2Fexample.com%2Fvideo.mp4&info=1
+```
+
+**Metadata response**
+```json
+{
+  "success": true,
+  "resolved_url": "https://...",
+  "original_url": "https://...",
+  "filename": "inception.mp4",
+  "status": 200,
+  "content_type": "video/mp4",
+  "content_length": 1610612736,
+  "content_length_mb": 1536.0,
+  "accept_ranges": "bytes",
+  "last_modified": "Mon, 01 Jan 2024 00:00:00 GMT",
+  "download_url": "/api/download?url=...&filename=inception.mp4"
+}
+```
+
+---
+
+### `GET /`
+Health check and endpoint index.
+
+**Response**
+```json
+{
+  "status": "ok",
+  "service": "vyla-api",
+  "endpoints": {
+    "movie": "/api/movie?id=<tmdb_id>",
+    "tv": "/api/tv?id=<tmdb_id>&season=<s>&episode=<e>",
+    "stream_movie": "/api/stream/movie?id=<tmdb_id>",
+    "stream_tv": "/api/stream/tv?id=<tmdb_id>&season=<s>&episode=<e>",
+    "stream_scraper": "/api/stream/scraper?id=<tmdb_id>&type=<movie|tv>&season=<s>&episode=<e>",
+    "proxy": "/api/proxy?url=<encoded_url>&headers=<base64_headers>",
+    "download": "/api/download?url=<encoded_url>&filename=<name.mp4>",
+    "player": "/player?type=movie&id=<tmdb_id>"
+  }
+}
 ```
 
 ---
 
 ## Providers
 
+Sources are scraped concurrently from all providers and deduplicated. Results are sorted by quality (highest first) and filtered to English audio only.
+
 | Provider | Type | Notes |
-|---|---|---|
-| 02MovieDownloader | mp4 + external | Token auth, up to 2160p |
-| VixSrc | HLS | Token-gated master playlist |
-| VidSrc | HLS | Multi-hop iframe chain |
-| Uembed / Madplay | HLS | 4-API fan-out + M3U8 parsing |
-| VidRock | HLS + mp4 | AES-CBC encrypted item IDs |
-| RgShows | mp4 | Simple JSON stream |
-| VidZee | HLS | 14-server parallel fan-out + AES-CBC decrypt |
-| 02Embed | HLS | Fallback |
-
-All providers run in parallel. A failed provider never blocks results from the others.
+|----------|------|-------|
+| 02MovieDownloader | mp4 / hls | Requires token verification |
+| VixSrc | hls | Token + expiry from page HTML |
+| VidSrc | hls | Multi-domain template resolution |
+| Uembed | hls | Multi-API with m3u8 variant resolution |
+| VidRock | hls / mp4 | AES-CBC encrypted item IDs |
+| RgShows | mp4 | Single stream per title |
+| VidZee | hls | AES-CBC encrypted stream URLs, 14 servers |
+| 02Embed | hls | Rewritten via HLS proxy |
 
 ---
 
-## Usage from any frontend
+## Quality Priority
 
-```js
-const res = await fetch("https://vyla-api.pages.dev/api/stream/movie?id=550");
-const { sources, subtitles } = await res.json();
+Sources are ranked in this order:
 
-// Pick highest quality (already sorted)
-const best = sources[0];
-
-// Play with hls.js
-const hls = new Hls();
-hls.loadSource(best.url);
-hls.attachMedia(videoElement);
+```
+4K / 2160p > 1440p > 1080p > 720p > 480p > 360p > 240p > HD > Auto > Unknown
 ```
 
 ---
 
-## TMDB IDs
+## Source Object
 
-```
-https://www.themoviedb.org/movie/550-fight-club   →  id=550
-https://www.themoviedb.org/tv/456-the-simpsons    →  id=456
+```json
+{
+  "url": "https://...",
+  "type": "hls | mp4 | mkv",
+  "quality": "1080p",
+  "provider": "VixSrc",
+  "audioTracks": [
+    { "language": "eng", "label": "English" }
+  ],
+  "headers": {
+    "Referer": "https://...",
+    "Origin": "https://..."
+  }
+}
 ```
 
 ---
 
-## License
+## Subtitle Object
 
-MIT
+```json
+{
+  "url": "https://...",
+  "label": "English",
+  "format": "vtt | srt"
+}
+```
+
+---
+
+## CORS
+
+All endpoints return:
+
+```
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: GET, HEAD, OPTIONS
+Access-Control-Allow-Headers: *
+```
+
+---
+
+## Deployment
+
+Deployed on Cloudflare Pages with Functions.
+
+```
+wrangler pages deploy
+```
+
+Local development:
+
+```
+wrangler pages dev
+```
+
+---
+
+## File Structure
+
+```
+functions/
+├── _lib/
+│   ├── proxy.js       # Core proxy logic (GET, HEAD, OPTIONS)
+│   └── scraper.js     # All provider scrapers + scrape() export
+└── api/
+    ├── stream/
+    │   ├── movie.js
+    │   ├── proxy.js
+    │   ├── scraper.js
+    │   └── tv.js
+    ├── download.js
+    ├── index.js
+    ├── movie.js
+    ├── player.js
+    ├── proxy.js
+    └── tv.js
+```
