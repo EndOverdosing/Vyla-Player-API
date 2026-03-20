@@ -270,7 +270,23 @@ async function verifySources(sources) {
     return results.filter((r) => r.status === "fulfilled" && r.value).map((r) => r.value);
 }
 
-export async function scrape(mediaType, tmdbId, season = "1", episode = "1", origin = "") {
+async function encryptUrl(url, secret) {
+    const key = await crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(secret.padEnd(32, "0").slice(0, 32)),
+        { name: "AES-CBC" },
+        false,
+        ["encrypt"]
+    );
+    const iv = crypto.getRandomValues(new Uint8Array(16));
+    const encrypted = await crypto.subtle.encrypt({ name: "AES-CBC", iv }, key, new TextEncoder().encode(url));
+    const combined = new Uint8Array(16 + encrypted.byteLength);
+    combined.set(iv);
+    combined.set(new Uint8Array(encrypted), 16);
+    return btoa(String.fromCharCode(...combined)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
+
+export async function scrape(mediaType, tmdbId, season = "1", episode = "1", origin = "", secret = "") {
     const settled = await Promise.allSettled([
         provider02Downloader(mediaType, tmdbId, season, episode),
         providerRgShows(mediaType, tmdbId, season, episode),
@@ -282,6 +298,7 @@ export async function scrape(mediaType, tmdbId, season = "1", episode = "1", ori
     ]);
     const all = settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
     const verified = await verifySources(all);
-    if (!origin) return verified;
-    return verified.map((s) => ({ ...s, url: `${origin}/proxy?url=${encodeURIComponent(s.url)}` }));
+    if (!origin || !secret) return verified;
+    const mapped = await Promise.all(verified.map(async (s) => ({ ...s, url: `${origin}/proxy?t=${await encryptUrl(s.url, secret)}` })));
+    return mapped;
 }
