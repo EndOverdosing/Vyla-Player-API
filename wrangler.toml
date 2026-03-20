@@ -1,7 +1,4 @@
-name = "vyla-api"
-compatibility_date = "2024-01-01"
+name = "vyla-player-api"
+compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = "public"
-
-[vars]
-ENVIRONMENT = "production"

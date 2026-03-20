@@ -2,21 +2,24 @@
 
 # vyla-api
 
-Media stream scraper API running entirely on Cloudflare Pages Functions. No backend, no Python — just deploy and use.
+Multi-provider media stream scraper running entirely on Cloudflare Pages Functions. No backend, no Python — just deploy and use.
 
 ---
 
 ## How it works
 
-Sources are scraped from 02pcembed.site and proxied through madvid3.xyz's HLS proxy so they're playable directly in any video player. Error sources are automatically filtered out before returning results.
+Sources are scraped in parallel from 8 providers (VidZee, VidRock, VixSrc, VidSrc, Uembed, RgShows, 02MovieDownloader, 02Embed). Results are deduplicated, sorted by quality, and filtered to English-only audio before being returned. Third-party proxy URLs are automatically unwrapped to their real upstream before being passed through the built-in proxy.
 
 ```
 Client
   │
   ▼
 Cloudflare Pages (vyla-api)
-  ├── GET /api/movie → scrape movie sources
-  └── GET /api/tv    → scrape TV episode sources
+  ├── GET /api/stream/movie   → scrape movie sources (all providers)
+  ├── GET /api/stream/tv      → scrape TV episode sources (all providers)
+  ├── GET /api/stream/scraper → combined endpoint (type param)
+  ├── GET /api/proxy          → stream proxy + M3U8 rewriter
+  └── GET /api/download       → forced file download
 ```
 
 ---
@@ -25,31 +28,40 @@ Cloudflare Pages (vyla-api)
 
 ```
 ├── functions/
-│   ├── api/
-│   │   ├── movie.js     ← /api/movie
-│   │   └── tv.js        ← /api/tv
-│   └── lib/
-│       └── scraper.js   ← source scraping + HLS proxy rewriting
+│   ├── _lib/
+│   │   ├── scraper.js        ← all provider logic + English filter
+│   │   └── proxy.js          ← stream proxy + M3U8 segment rewriting
+│   └── api/
+│       ├── stream/
+│       │   ├── movie.js      ← /api/stream/movie
+│       │   ├── tv.js         ← /api/stream/tv
+│       │   └── scraper.js    ← /api/stream/scraper
+│       ├── download.js       ← /api/download
+│       └── proxy.js          ← /api/proxy
 ├── public/
-│   └── .gitkeep
+│   └── index.html
 ├── wrangler.toml
+├── package.json
 ├── .gitignore
 └── README.md
 ```
+
+> `_lib/` uses the `_` prefix so Cloudflare Pages treats it as a shared module folder rather than a route.
 
 ---
 
 ## Local dev
 
 ```bash
+npm install
 wrangler pages dev
 ```
 
 Test:
 
 ```
-GET http://127.0.0.1:8788/api/movie?id=550
-GET http://127.0.0.1:8788/api/tv?id=456&season=1&episode=1
+GET http://127.0.0.1:8788/api/stream/movie?id=550
+GET http://127.0.0.1:8788/api/stream/tv?id=456&season=1&episode=1
 ```
 
 ---
@@ -79,25 +91,28 @@ All endpoints return `Access-Control-Allow-Origin: *` and support `OPTIONS` pref
 
 ---
 
-### `GET /api/movie`
+### `GET /api/stream/movie`
 
 | Param | Required | Description |
 |---|---|---|
 | `id` | ✅ | TMDB movie ID |
 
 ```
-GET /api/movie?id=550
+GET /api/stream/movie?id=550
 ```
 
 ```json
 {
   "success": true,
-  "results_found": 6,
+  "results_found": 12,
   "sources": [
     {
-      "url": "https://madvid3.xyz/api/hls-proxy?url=...",
+      "url": "https://...",
+      "type": "hls",
       "quality": "1080p",
-      "type": "hls"
+      "provider": "VidZee",
+      "audioTracks": [{ "language": "eng", "label": "English" }],
+      "headers": { "Referer": "https://..." }
     }
   ],
   "subtitles": [
@@ -110,11 +125,11 @@ GET /api/movie?id=550
 }
 ```
 
-`success` is `false` if no valid sources were found. `results_found` reflects the number of sources after deduplication and error filtering.
+`success` is `false` if no valid sources were found. Sources are sorted highest quality first. Only English audio tracks are returned.
 
 ---
 
-### `GET /api/tv`
+### `GET /api/stream/tv`
 
 | Param | Required | Default | Description |
 |---|---|---|---|
@@ -123,18 +138,94 @@ GET /api/movie?id=550
 | `episode` | ❌ | `1` | Episode number |
 
 ```
-GET /api/tv?id=456&season=1&episode=1
+GET /api/stream/tv?id=456&season=1&episode=1
 ```
 
-Response shape is identical to `/api/movie`. TV responses are cached for 5 minutes on the client and 15 minutes at the edge.
+Response shape is identical to `/api/stream/movie`.
+
+---
+
+### `GET /api/stream/scraper`
+
+Combined endpoint — pass `type` instead of using separate movie/tv routes.
+
+| Param | Required | Default | Description |
+|---|---|---|---|
+| `id` | ✅ | — | TMDB ID |
+| `type` | ❌ | `movie` | `movie` or `tv` |
+| `season` | ❌ | `1` | Season number (TV only) |
+| `episode` | ❌ | `1` | Episode number (TV only) |
+
+```
+GET /api/stream/scraper?id=550&type=movie
+GET /api/stream/scraper?id=456&type=tv&season=2&episode=5
+```
+
+---
+
+### `GET /api/proxy`
+
+Proxies any upstream URL through Cloudflare. M3U8 playlists are automatically parsed and all segment/key URLs are rewritten to route through this same proxy — so HLS streams play without CORS issues in any player.
+
+| Param | Required | Description |
+|---|---|---|
+| `url` | ✅ | URL-encoded target URL |
+| `headers` | ❌ | Base64-encoded JSON of extra request headers |
+
+```
+GET /api/proxy?url=https%3A%2F%2Fexample.com%2Fvideo.m3u8
+GET /api/proxy?url=...&headers=eyJSZWZlcmVyIjoiaHR0cHM6Ly9leGFtcGxlLmNvbS8ifQ==
+```
+
+Append `/download` to the path to force a `Content-Disposition: attachment` response.
+
+---
+
+### `GET /api/download`
+
+Forces a file download with a `Content-Disposition: attachment` header. Useful for triggering browser save dialogs.
+
+| Param | Required | Default | Description |
+|---|---|---|---|
+| `url` | ✅ | — | URL-encoded target URL |
+| `filename` | ❌ | `download.mp4` | Output filename |
+
+```
+GET /api/download?url=https%3A%2F%2Fexample.com%2Fvideo.mp4&filename=fight-club.mp4
+```
+
+---
+
+## Providers
+
+| Provider | Type | Notes |
+|---|---|---|
+| 02MovieDownloader | mp4 + external | Token auth, up to 2160p |
+| VixSrc | HLS | Token-gated master playlist |
+| VidSrc | HLS | Multi-hop iframe chain |
+| Uembed / Madplay | HLS | 4-API fan-out + M3U8 parsing |
+| VidRock | HLS + mp4 | AES-CBC encrypted item IDs |
+| RgShows | mp4 | Simple JSON stream |
+| VidZee | HLS | 14-server parallel fan-out + AES-CBC decrypt |
+| 02Embed | HLS | Fallback |
+
+All providers run in parallel. A failed provider never blocks results from the others.
 
 ---
 
 ## Usage from any frontend
 
 ```js
-const res = await fetch("https://vyla-api.pages.dev/api/movie?id=550");
+const res = await fetch("https://vyla-api.pages.dev/api/stream/movie?id=550");
 const { sources, subtitles } = await res.json();
+
+// Pick highest quality (already sorted)
+const best = sources[0];
+
+// Play with hls.js
+const hls = new Hls();
+hls.loadSource(best.url);
+hls.attachMedia(videoElement);
 ```
 
 ---

@@ -1,0 +1,14 @@
+{
+    "name": "vyla-player-api",
+    "version": "2.0.0",
+    "private": true,
+    "description": "Vyla Player API — multi-provider stream scraper on Cloudflare Pages",
+    "type": "module",
+    "scripts": {
+        "dev": "wrangler pages dev public --compatibility-flag nodejs_compat",
+        "deploy": "wrangler pages deploy public"
+    },
+    "devDependencies": {
+        "wrangler": "^3.0.0"
+    }
+}
