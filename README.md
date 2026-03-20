@@ -127,6 +127,21 @@ All endpoints are `Access-Control-Allow-Origin: *` — works from any origin.
 
 ---
 
+### `GET /proxy`
+
+| Param | Required | Description |
+|---|---|---|
+| `url` | ✅ | Direct URL to proxy and force-download |
+
+Used internally by the player's download button to force `Content-Disposition: attachment` on cross-origin mp4 sources. Without this, browsers open the file instead of downloading it.
+```
+GET /proxy?url=https://example.com/video.mp4
+```
+
+> Only works with mp4 sources. HLS (`.m3u8`) streams cannot be downloaded this way.
+
+---
+
 ## TMDB IDs
 ```
 https://www.themoviedb.org/movie/550-fight-club   →  id=550
