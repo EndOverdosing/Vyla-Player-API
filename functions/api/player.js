@@ -66,25 +66,28 @@ const SOURCES = ${sourcesJson};
 const SUBTITLES = ${subtitlesJson};
 const video = document.getElementById("v");
 let hls = null;
+let idx = 0;
+let stallTimer = null;
+let started = false;
 
-function load(src) {
-    if (hls) { hls.destroy(); hls = null; }
-    const isHLS = src.type === "hls" || src.url.includes(".m3u8");
-    if (isHLS && Hls.isSupported()) {
-        hls = new Hls();
-        hls.loadSource(src.url);
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
-        hls.on(Hls.Events.ERROR, (_, d) => {
-            if (d.fatal) tryNext();
-        });
-    } else if (video.canPlayType("application/vnd.apple.mpegurl") && isHLS) {
-        video.src = src.url;
-        video.play().catch(() => {});
-    } else {
-        video.src = src.url;
-        video.play().catch(() => {});
-    }
+function clearStallTimer() {
+    if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; }
+}
+
+function armStallTimer() {
+    clearStallTimer();
+    stallTimer = setTimeout(() => {
+        if (!started) tryNext();
+    }, 12000);
+}
+
+function onPlaying() {
+    started = true;
+    clearStallTimer();
+}
+
+function attachSubtitles() {
+    video.querySelectorAll("track").forEach(t => t.remove());
     SUBTITLES.forEach((sub, i) => {
         const t = document.createElement("track");
         t.kind = "subtitles";
@@ -96,12 +99,48 @@ function load(src) {
     });
 }
 
-let idx = 0;
+function load(src) {
+    clearStallTimer();
+    started = false;
+    if (hls) { hls.destroy(); hls = null; }
+    video.removeAttribute("src");
+    video.load();
+
+    const isHLS = src.type === "hls" || src.url.includes(".m3u8");
+
+    if (isHLS && Hls.isSupported()) {
+        hls = new Hls({ enableWorker: true, fragLoadingTimeOut: 10000, manifestLoadingTimeOut: 10000 });
+        hls.loadSource(src.url);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            armStallTimer();
+            video.play().catch(() => {});
+        });
+        hls.on(Hls.Events.ERROR, (_, d) => {
+            if (d.fatal) { clearStallTimer(); tryNext(); }
+        });
+    } else if (video.canPlayType("application/vnd.apple.mpegurl") && isHLS) {
+        video.src = src.url;
+        armStallTimer();
+        video.play().catch(() => {});
+    } else {
+        video.src = src.url;
+        armStallTimer();
+        video.play().catch(() => {});
+    }
+
+    attachSubtitles();
+}
+
 function tryNext() {
     if (idx < SOURCES.length) load(SOURCES[idx++]);
 }
 
-video.addEventListener("error", tryNext);
+video.addEventListener("playing", onPlaying);
+video.addEventListener("error", () => { clearStallTimer(); tryNext(); });
+video.addEventListener("stalled", () => { if (!started) armStallTimer(); });
+video.addEventListener("waiting", () => { if (!started) armStallTimer(); });
+
 tryNext();
 </script>
 </body>
