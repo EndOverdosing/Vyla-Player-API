@@ -1,4 +1,4 @@
-import { scrape } from "../../lib/scraper.js";
+import { scrape } from "./scraper.js";
 
 const CORS = {
     "Access-Control-Allow-Origin": "*",
