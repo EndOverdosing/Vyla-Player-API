@@ -91,24 +91,6 @@ Same as `/api/tv` but nested under the `/stream` path.
 
 ---
 
-### `GET /api/stream/scraper`
-Generic scraper endpoint supporting both types via a `type` param.
-
-**Parameters**
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `id` | string | ✅ | TMDB ID |
-| `type` | string | ✅ | `movie` or `tv` |
-| `season` | string | ❌ | Season (TV only) |
-| `episode` | string | ❌ | Episode (TV only) |
-
-**Example**
-```
-/api/stream/scraper?id=1396&type=tv&season=1&episode=1
-```
-
----
-
 ### `GET /api/player`
 Returns a fullscreen embedded HTML video player that scrapes and streams the content directly in the browser. No UI controls — pure video.
 
@@ -201,7 +183,6 @@ Health check and endpoint index.
     "tv": "/api/tv?id=<tmdb_id>&season=<s>&episode=<e>",
     "stream_movie": "/api/stream/movie?id=<tmdb_id>",
     "stream_tv": "/api/stream/tv?id=<tmdb_id>&season=<s>&episode=<e>",
-    "stream_scraper": "/api/stream/scraper?id=<tmdb_id>&type=<movie|tv>&season=<s>&episode=<e>",
     "proxy": "/api/proxy?url=<encoded_url>&headers=<base64_headers>",
     "download": "/api/download?url=<encoded_url>&filename=<name.mp4>",
     "player": "/player?type=movie&id=<tmdb_id>"
