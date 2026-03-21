@@ -6,6 +6,28 @@ const CORS = {
     "Access-Control-Allow-Headers": "*",
 };
 
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6884.98 Safari/537.36";
+
+async function checkSource(src, timeoutMs = 5000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(src.url, {
+            method: "HEAD",
+            headers: {
+                "User-Agent": UA,
+                ...(src.headers ?? {}),
+            },
+            signal: controller.signal,
+        });
+        clearTimeout(timer);
+        return res.ok || res.status === 206;
+    } catch {
+        clearTimeout(timer);
+        return false;
+    }
+}
+
 export async function onRequestOptions() {
     return new Response(null, { status: 204, headers: CORS });
 }
@@ -16,6 +38,7 @@ export async function onRequestGet({ request }) {
     const id = searchParams.get("id");
     const season = searchParams.get("season") ?? "1";
     const episode = searchParams.get("episode") ?? "1";
+    const nocheck = searchParams.get("nocheck") === "1";
 
     if (!id) {
         return new Response("<h2>Missing ?id=</h2>", {
@@ -33,18 +56,43 @@ export async function onRequestGet({ request }) {
         });
     }
 
+    let liveSources = sources;
+
+    if (!nocheck) {
+        const checks = await Promise.all(
+            sources.map(async (s) => ({ s, ok: await checkSource(s) }))
+        );
+        liveSources = checks.filter((c) => c.ok).map((c) => c.s);
+        if (!liveSources.length) liveSources = sources;
+    }
+
     const proxyBase = origin + "/api/proxy";
 
+    function proxiedUrl(s) {
+        return proxyBase + "?url=" + encodeURIComponent(s.url) +
+            (s.headers ? "&headers=" + btoa(JSON.stringify(s.headers)) : "");
+    }
+
+    function proxiedSubUrl(url) {
+        return proxyBase + "?url=" + encodeURIComponent(url);
+    }
+
     const sourcesJson = JSON.stringify(
-        sources.map((s) => ({
-            url: proxyBase + "?url=" + encodeURIComponent(s.url) + (s.headers ? "&headers=" + btoa(JSON.stringify(s.headers)) : ""),
+        liveSources.map((s) => ({
+            url: proxiedUrl(s),
             type: s.type,
             quality: s.quality,
             provider: s.provider,
         }))
     );
 
-    const subtitlesJson = JSON.stringify(subtitles);
+    const subtitlesJson = JSON.stringify(
+        subtitles.map((s) => ({
+            url: proxiedSubUrl(s.url),
+            label: s.label || "English",
+            format: s.format || "vtt",
+        }))
+    );
 
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -76,14 +124,7 @@ function clearStallTimer() {
 
 function armStallTimer() {
     clearStallTimer();
-    stallTimer = setTimeout(() => {
-        if (!started) tryNext();
-    }, 12000);
-}
-
-function onPlaying() {
-    started = true;
-    clearStallTimer();
+    stallTimer = setTimeout(() => { if (!started) tryNext(); }, 8000);
 }
 
 function attachSubtitles() {
@@ -91,7 +132,7 @@ function attachSubtitles() {
     SUBTITLES.forEach((sub, i) => {
         const t = document.createElement("track");
         t.kind = "subtitles";
-        t.label = sub.label || "English";
+        t.label = sub.label;
         t.srclang = "en";
         t.src = sub.url;
         if (i === 0) t.default = true;
@@ -109,7 +150,12 @@ function load(src) {
     const isHLS = src.type === "hls" || src.url.includes(".m3u8");
 
     if (isHLS && Hls.isSupported()) {
-        hls = new Hls({ enableWorker: true, fragLoadingTimeOut: 10000, manifestLoadingTimeOut: 10000 });
+        hls = new Hls({
+            enableWorker: true,
+            fragLoadingTimeOut: 8000,
+            manifestLoadingTimeOut: 6000,
+            levelLoadingTimeOut: 6000,
+        });
         hls.loadSource(src.url);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -136,7 +182,7 @@ function tryNext() {
     if (idx < SOURCES.length) load(SOURCES[idx++]);
 }
 
-video.addEventListener("playing", onPlaying);
+video.addEventListener("playing", () => { started = true; clearStallTimer(); });
 video.addEventListener("error", () => { clearStallTimer(); tryNext(); });
 video.addEventListener("stalled", () => { if (!started) armStallTimer(); });
 video.addEventListener("waiting", () => { if (!started) armStallTimer(); });
