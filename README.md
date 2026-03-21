@@ -22,7 +22,6 @@ https://vyla-api.pages.dev
 |--------|------|-------------|
 | GET | `/api/movie?id=<tmdb_id>` | Scrape sources for a movie |
 | GET | `/api/tv?id=<tmdb_id>&season=<s>&episode=<e>` | Scrape sources for a TV episode |
-| GET | `/api/player?type=<movie\|tv>&id=<tmdb_id>` | Embeddable video player |
 | GET | `/api/proxy?url=<encoded_url>&headers=<b64>` | CORS proxy with m3u8 rewriting |
 | GET | `/api/download?url=<encoded_url>&filename=<name>` | Download a video file |
 | GET | `/api/download?url=<encoded_url>&info=1` | Get file metadata as JSON |
@@ -39,13 +38,6 @@ curl https://vyla-api.pages.dev/api/movie?id=27205
 
 # Fetch TV episode sources
 curl "https://vyla-api.pages.dev/api/tv?id=1396&season=1&episode=1"
-```
-
-Embed the player:
-
-```html
-<iframe src="https://vyla-api.pages.dev/api/player?type=movie&id=27205"
-  width="100%" height="500" allowfullscreen></iframe>
 ```
 
 ---
@@ -85,7 +77,6 @@ functions/
     ├── download.js
     ├── index.js
     ├── movie.js
-    ├── player.js
     ├── proxy.js
     └── tv.js
 ```

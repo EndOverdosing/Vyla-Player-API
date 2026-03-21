@@ -13,8 +13,6 @@ export async function onRequestGet() {
     "download_info": "/api/download?url=<encoded_url>&info=1",
     "download_movie": "/api/download/movie?id=<tmdb_id>",
     "download_tv": "/api/download/tv?id=<tmdb_id>&season=<s>&episode=<e>",
-    "player_movie": "/api/player?type=movie&id=<tmdb_id>",
-    "player_tv": "/api/player?type=tv&id=<tmdb_id>&season=<s>&episode=<e>"
   }
 }`;
 

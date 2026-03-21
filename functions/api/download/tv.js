@@ -99,6 +99,7 @@ function enrichSource(s, index, prefix) {
     const isHLS = s.type === "hls" || realUrl.includes(".m3u8") || realUrl.includes("/playlist/");
     const realHeaders = getSourceHeaders(realUrl);
     const filename = `${prefix}_${s.quality || "unknown"}_${index + 1}.mp4`;
+    const proxyUrl = `/api/proxy?url=${encodeURIComponent(realUrl)}&headers=${encodeURIComponent(btoa(JSON.stringify(realHeaders)))}`;
 
     return {
         provider: s.provider,
@@ -109,6 +110,7 @@ function enrichSource(s, index, prefix) {
         referer: realHeaders.Referer || null,
         ffmpeg_command: buildFfmpegCommand(realUrl, realHeaders, filename),
         download_url: isHLS ? null : buildDownloadUrl(realUrl, realHeaders, filename),
+        vlc_url: proxyUrl,
     };
 }
 

@@ -25,13 +25,10 @@ export async function onRequestGet({ request }) {
 
     const { sources, subtitles } = await scrape("tv", id, season, episode);
 
+    const mapped = sources.map(s => ({ ...s, vlc_url: s.url }));
+
     return Response.json(
-        {
-            success: sources.length > 0,
-            results_found: sources.length,
-            sources,
-            subtitles,
-        },
+        { success: mapped.length > 0, results_found: mapped.length, sources: mapped, subtitles },
         { headers: CORS }
     );
 }

@@ -83,12 +83,17 @@ function unwrapThirdPartyProxy(url) {
                         break;
                     }
                 }
-                return decoded;
+
+                if (decoded.startsWith("http://") || decoded.startsWith("https://")) {
+                    return decoded;
+                }
+                if (decoded.includes("://")) {
+                    return decoded;
+                }
+                return "https://" + decoded;
             }
         }
-    } catch {
-
-    }
+    } catch { }
     return url;
 }
 

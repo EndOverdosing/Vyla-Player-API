@@ -24,13 +24,15 @@ export async function onRequestGet({ request }) {
 
     const { sources, subtitles } = await scrape("movie", id);
 
+    const mapped = sources.map(s => {
+        const realUrl = s.url;
+        const realHeaders = s.headers || {};
+        const proxyUrl = `/api/proxy?url=${encodeURIComponent(realUrl)}&headers=${encodeURIComponent(btoa(JSON.stringify(realHeaders)))}`;
+        return { ...s, vlc_url: proxyUrl };
+    });
+
     return Response.json(
-        {
-            success: sources.length > 0,
-            results_found: sources.length,
-            sources,
-            subtitles,
-        },
+        { success: mapped.length > 0, results_found: mapped.length, sources: mapped, subtitles },
         { headers: CORS }
     );
 }
