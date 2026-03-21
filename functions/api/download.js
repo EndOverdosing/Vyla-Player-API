@@ -7,6 +7,7 @@ const CORS = {
 const PROXY_PATTERNS = {
     "https://hls1.vid1.site": [/\/proxy\/(.+)$/],
     "https://madplay.site": [/\/api\/[^/]+\/proxy\?url=(.+)$/],
+    "https://madvid3.xyz": [/\/api\/[^/]+\/proxy\?url=(.+)$/],
     "https://hlsproxy3.asiaflix.net": [/\/m3u8-proxy\?url=(.+?)(?:&|$)/],
     "https://streams.smashystream.top": [/\/proxy\/m3u8\/(.+?)\/[^/]+$/],
     "*": [
