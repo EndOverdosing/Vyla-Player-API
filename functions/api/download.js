@@ -69,9 +69,8 @@ export async function onRequestGet({ request }) {
 
     const fetchHeaders = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6884.98 Safari/537.36",
-        ...(isHakunaya
-            ? { Referer: "https://lok-lok.cc/", Origin: "https://lok-lok.cc/" }
-            : { Referer: "https://02movie.com/", Origin: "https://02movie.com" }),
+        Referer: isHakunaya ? "https://lok-lok.cc/" : "https://02movie.com/",
+        Origin: isHakunaya ? "https://lok-lok.cc" : "https://02movie.com",
     };
 
     if (searchParams.get("info") === "1") {
