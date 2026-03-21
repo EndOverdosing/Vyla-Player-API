@@ -87,10 +87,9 @@ export async function onRequestGet({ request }) {
     const isHakunaya = finalUrl.includes("hakunaymatata");
 
     const fetchHeaders = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6884.98 Safari/537.36",
-        Referer: isHakunaya ? "https://lok-lok.cc/" : "https://02movie.com/",
-        Origin: isHakunaya ? "https://lok-lok.cc" : "https://02movie.com",
         ...embeddedHeaders,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6884.98 Safari/537.36",
+        ...(isHakunaya ? { Referer: "https://lok-lok.cc/", Origin: "https://lok-lok.cc" } : {}),
     };
 
     if (searchParams.get("info") === "1") {
