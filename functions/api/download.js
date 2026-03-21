@@ -82,8 +82,9 @@ export async function onRequestGet({ request }) {
         }, { status: 400, headers: CORS });
     }
 
-    const { url: embeddedUrl, headers: embeddedHeaders } = extractEmbeddedHeaders(url);
-    const finalUrl = embeddedUrl ? embeddedUrl : url;
+    const unwrappedUrl = unwrapProxy(encodedUrl);
+    const { url: embeddedUrl, headers: embeddedHeaders } = extractEmbeddedHeaders(unwrappedUrl);
+    const finalUrl = embeddedUrl ? embeddedUrl : unwrappedUrl;
     const isHakunaya = finalUrl.includes("hakunaymatata");
 
     const fetchHeaders = {
@@ -104,8 +105,8 @@ export async function onRequestGet({ request }) {
 
         return Response.json({
             success: upstream.ok,
-            resolved_url: url,
-            original_url: rawUrl,
+            resolved_url: finalUrl,
+            original_url: encodedUrl,
             filename,
             status: upstream.status,
             content_type: upstream.headers.get("content-type"),
