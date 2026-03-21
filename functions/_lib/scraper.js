@@ -381,7 +381,7 @@ async function fetchVidSrc(media) {
     async function fetchText(url) {
         try {
             if (url.startsWith("//")) url = "https:" + url;
-            const res = await safeFetch(url, { headers }, 4000);
+            const res = await safeFetch(url, { headers }, 3000);
             if (!res.ok) return null;
             return await res.text();
         } catch {
@@ -621,13 +621,14 @@ async function fetchVidRock(media) {
         if (!res.ok) return { sources, subtitles };
         const data = await res.json();
 
-        for (const [, stream] of Object.entries(data)) {
-            if (!stream?.url) continue;
-
+        const streamEntries = Object.values(data).filter(stream => {
+            if (!stream?.url) return false;
             const lang = (stream.language ?? "").toLowerCase();
+            return !lang || ENGLISH_LANG_CODES.has(lang) || lang.includes("english");
+        });
 
-            if (lang && !ENGLISH_LANG_CODES.has(lang) && !lang.includes("english")) continue;
-
+        await Promise.all(streamEntries.map(async (stream) => {
+            const lang = (stream.language ?? "").toLowerCase();
             const audioTrack = {
                 language: lang === "english" || lang === "" ? "eng" : lang,
                 label: stream.language ?? "English",
@@ -635,8 +636,8 @@ async function fetchVidRock(media) {
 
             if (stream.url.includes("hls2.vdrk.site")) {
                 try {
-                    const cdnRes = await safeFetch(stream.url, { headers }, 4000);
-                    if (!cdnRes.ok) continue;
+                    const cdnRes = await safeFetch(stream.url, { headers }, 3000);
+                    if (!cdnRes.ok) return;
                     const cdnData = await cdnRes.json();
                     for (const obj of cdnData) {
                         let finalUrl = obj.url;
@@ -667,7 +668,7 @@ async function fetchVidRock(media) {
                     headers: streamHeaders,
                 });
             }
-        }
+        }));
 
         try {
             const subUrl =
@@ -707,7 +708,7 @@ async function fetchRgShows(media) {
             : `${BASE}/tv/${media.tmdbId}/${media.season}/${media.episode}`;
 
     try {
-        const res = await safeFetch(pageUrl, { headers }, 4000);
+        const res = await safeFetch(pageUrl, { headers }, 3000);
         if (!res.ok) return { sources: [], subtitles: [] };
         const data = await res.json();
         if (!data?.stream?.url) return { sources: [], subtitles: [] };
