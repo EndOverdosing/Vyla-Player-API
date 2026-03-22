@@ -23,6 +23,7 @@ export async function onRequestGet() {
     --gray-800: 37 37 37;
     --gray-900: 18 18 18;
     --gray-950: 0 0 0;
+    --background: 0 0 0;
   }
 
   *, *::before, *::after { 
@@ -35,23 +36,13 @@ export async function onRequestGet() {
 
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: rgb(var(--background-dark));
+    background: rgb(var(--background));
     color: rgb(var(--gray-100));
     min-height: 100vh;
-    padding: 28px 20px 48px;
     overflow: auto;
     scrollbar-width: none;
     -ms-overflow-style: none;
     position: relative;
-  }
-
-  .bg-grid {
-    position: absolute;
-    inset: 0;
-    background-color: rgb(var(--background-dark));
-    background-size: 32px 32px;
-    print: print-color-exact;
-    z-index: -1;
   }
 
   body::-webkit-scrollbar {
@@ -131,7 +122,11 @@ export async function onRequestGet() {
     white-space: nowrap;
     letter-spacing: -0.01em;
   }
-  .fetch-btn:hover { background: rgb(var(--gray-200)); }
+  
+  .fetch-btn:hover { 
+    background: var(--gray-950); 
+  }
+  
   .fetch-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
   .statusbar {
@@ -162,6 +157,8 @@ export async function onRequestGet() {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
     gap: 10px;
+    -webkit-mask-image: linear-gradient(to top, transparent, black 10%, black 90%, transparent);
+    mask-image: linear-gradient(to top, transparent, black 10%, black 90%, transparent);
   }
 
   .empty {
@@ -170,7 +167,6 @@ export async function onRequestGet() {
     padding: 60px 20px;
     color: rgb(var(--gray-700));
     font-size: 0.875rem;
-    border: 1px dashed rgb(var(--gray-800));
     border-radius: 10px;
   }
   .empty svg { display: block; margin: 0 auto 12px; opacity: 0.3; }
@@ -240,7 +236,7 @@ export async function onRequestGet() {
   .quality {
     font-size: 1.05rem;
     font-weight: 800;
-    color: rgb(var(--gray-50));
+    color: rgb(var(--gray-100));
     letter-spacing: -0.02em;
     line-height: 1;
   }
@@ -498,6 +494,33 @@ function copyFfmpeg(btn, i) {
     setTimeout(() => { btn.innerHTML = orig; btn.classList.remove("success"); }, 2000);
   });
 }
+
+window.addEventListener('message', (e) => {
+  if (e.data?.type !== 'theme') return;
+  const root = document.documentElement;
+  if (e.data.dark) {
+    root.style.setProperty('--background', '0 0 0');
+    root.style.setProperty('--gray-950', '0 0 0');
+    root.style.setProperty('--gray-900', '18 18 18');
+    root.style.setProperty('--gray-800', '37 37 37');
+    root.style.setProperty('--gray-700', '62 62 62');
+    root.style.setProperty('--gray-600', '79 79 79');
+    root.style.setProperty('--gray-500', '111 111 111');
+    root.style.setProperty('--gray-100', '238 238 238');
+    root.style.setProperty('--gray-50', '17 17 17');
+  } else {
+    root.style.setProperty('--background', '255 255 255');
+    root.style.setProperty('--primary-light', '0 0 0');
+    root.style.setProperty('--gray-950', '255 255 255');
+    root.style.setProperty('--gray-900', '245 245 245');
+    root.style.setProperty('--gray-800', '220 220 220');
+    root.style.setProperty('--gray-700', '200 200 200');
+    root.style.setProperty('--gray-600', '160 160 160');
+    root.style.setProperty('--gray-500', '120 120 120');
+    root.style.setProperty('--gray-100', '20 20 20');
+    root.style.setProperty('--gray-50', '250 250 250');
+  }
+});
 </script>
 </body>
 </html>`;
