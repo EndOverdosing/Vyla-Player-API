@@ -437,13 +437,15 @@ function renderGrid(sources) {
     card.dataset.ffmpeg = s.ffmpeg_command || "";
 
     const typeClass = s.type === "hls" ? "hls" : s.type === "mkv" ? "mkv" : "mp4";
-    const isHLS = s.is_hls;
+    const isHLS = s.is_hls || s.type === "hls";
 
     let actions = "";
 
-    if (!isHLS && s.download_url) {
-      const href = s.download_url.startsWith("http") ? s.download_url : BASE + s.download_url;
-      actions += \`<a class="btn primary" href="\${href}" target="_blank" rel="noopener">
+    const downloadLink = !isHLS ? (s.download_url || s.url) : null;
+    
+    if (downloadLink) {
+      const href = downloadLink.startsWith("http") ? downloadLink : BASE + downloadLink;
+      actions += \`<a class="btn primary" href="\${href}" target="_blank" rel="noopener" download>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Download
       </a>\`;
