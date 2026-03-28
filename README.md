@@ -46,8 +46,6 @@ curl "https://vyla-api.pages.dev/api/tv?id=1396&season=1&episode=1"
 
 Sources are scraped concurrently, deduplicated, filtered to English audio, and sorted by quality.
 
-`02MovieDownloader` · `VixSrc` · `VidSrc` · `Uembed` · `VidRock` · `RgShows` · `VidZee` · `02Embed`
-
 ---
 
 ## Deployment
