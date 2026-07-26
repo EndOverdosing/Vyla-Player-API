@@ -1,8 +1,8 @@
 {
-    "name": "vyla-api",
+    "name": "stream-api",
     "version": "2.0.0",
     "private": true,
-    "description": "Vyla API — multi-provider stream scraper on Hugging Face Spaces",
+    "description": "Stream API — multi-provider stream scraper",
     "type": "module",
     "dependencies": {
         "dotenv": "^17.4.2"
