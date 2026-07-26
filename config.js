@@ -150,6 +150,18 @@ export const SOURCES = [
     },
 
     {
+        key: 'goated',
+        label: 'Goated',
+        sourceFile: 'goated',
+        proxyParam: 'gt',
+        timeout: 25000,
+        jitter: 500,
+        retries: 2,
+        multiUrl: true,
+        skipProxy: true,
+    },
+
+    {
         key: 'fsonic',
         label: 'Fsonic',
         sourceFile: 'fsonic',
