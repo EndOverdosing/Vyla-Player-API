@@ -1,12 +1,14 @@
-import { SOURCE_MAP } from '../../config.js';
 import { wrapUrl } from '../utils/proxy.js';
 import { getUA } from '../utils/helpers.js';
 
-export async function handleTestRoute(match, searchParams, clientIP, host, handleTestSource, googleAnalytic) {
+export async function handleTestRoute(sdk, match, searchParams, clientIP, host, handleTestSource, googleAnalytic) {
+    const sources = sdk.getSources();
     const source = searchParams.get('source');
-    if (!source || !SOURCE_MAP[source]) return { status: 400, body: JSON.stringify({ error: 'Invalid or Missing Source' }) };
+    const cfg = sources.find(src => src.key === source) || null;
+    if (!source || !cfg) return { status: 400, body: JSON.stringify({ error: 'Invalid or Missing Source' }) };
 
     const result = await handleTestSource(
+        sdk,
         source,
         match[1],
         searchParams.get('season') || searchParams.get('s') || null,
@@ -31,7 +33,7 @@ function safeStack(err) {
     return String(err.stack || err.message || err).split('\n').slice(0, 10);
 }
 
-export async function handleDebugRoute(match, searchParams, absoluteBase, _nativeFetch, verifyPlayable, SOURCE_MODULES) {
+export async function handleDebugRoute(sdk, match, searchParams, absoluteBase, _nativeFetch, verifyPlayable) {
     const id = match[1];
     const s = searchParams.get('season') || searchParams.get('s') || null;
     const e = searchParams.get('episode') || searchParams.get('e') || null;
@@ -41,9 +43,9 @@ export async function handleDebugRoute(match, searchParams, absoluteBase, _nativ
 
     if (!sourceKey) return { status: 400, body: JSON.stringify({ error: 'missing source', usage: '/debug/:id?source=key&season=&episode=&limit=&preview=' }) };
 
-    const mod = SOURCE_MODULES[sourceKey];
-    const cfg = SOURCE_MAP[sourceKey];
-    if (!mod) return { status: 400, body: JSON.stringify({ error: `unknown source: ${sourceKey}` }) };
+    const sources = sdk.getSources();
+    const cfg = sources.find(src => src.key === sourceKey) || null;
+    if (!cfg) return { status: 400, body: JSON.stringify({ error: `unknown source: ${sourceKey}` }) };
 
     const t0 = Date.now();
     let streamResult = null, streamError = null, streamErrorStack = null;
@@ -79,8 +81,7 @@ export async function handleDebugRoute(match, searchParams, absoluteBase, _nativ
     const prev = globalThis.fetch;
     globalThis.fetch = tracingFetch;
     try {
-        const audio = /dub$/.test(sourceKey) ? 'dub' : 'sub';
-        streamResult = await mod.getStream({ id, s, e, clientIP: null, absoluteBase, audio, config: cfg });
+        streamResult = await sdk.getStream(sourceKey, id, s, e);
     } catch (err) {
         streamError = err.message;
         streamErrorStack = safeStack(err);

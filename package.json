@@ -5,6 +5,7 @@
     "description": "Stream API — multi-provider stream scraper",
     "type": "module",
     "dependencies": {
+        "@vyla-entertainment/sdk": "^1.5.0",
         "dotenv": "^17.4.2"
     }
 }
