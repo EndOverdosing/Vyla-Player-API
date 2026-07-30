@@ -109,7 +109,7 @@ export async function handleDebugRoute(sdk, match, searchParams, absoluteBase, _
                 : { url: raw },
             sourceKey,
             absoluteBase,
-            SOURCE_MAP
+            sdk
         );
 
         const isSkippedProxy = !!raw?.skipProxy;
