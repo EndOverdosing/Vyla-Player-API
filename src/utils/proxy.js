@@ -7,12 +7,12 @@ function buildProxyUrl(base, params) {
     return `${base}?${params.toString()}`;
 }
 
-export function wrapUrl(rawUrl, sourceKey, absoluteBase, SOURCE_MAP) {
+export function wrapUrl(rawUrl, sourceKey, absoluteBase, sdk) {
     if (!rawUrl) return null;
 
     const raw = typeof rawUrl === "object" ? rawUrl.url : rawUrl;
     if (!raw) return null;
-    const cfg = SOURCE_MAP[sourceKey];
+    const cfg = sdk.getSources().find(c => c.key === sourceKey);
 
     if (!cfg || cfg.skipProxy || rawUrl?.skipProxy) {
         return raw;

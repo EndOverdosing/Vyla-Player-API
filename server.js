@@ -5,14 +5,15 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import http from 'http';
 import { Readable } from 'stream';
-import { SOURCES, SOURCE_MAP, CACHE_TTL } from './config.js';
-import { handleSubtitleMovie, handleSubtitleTv, fetchSubtitles, SUBTITLE_BASES } from './src/routes/subtitles.js';
+import { CACHE_TTL } from './config.js';
+import { handleSubtitleMovie, handleSubtitleTv } from './src/routes/subtitles.js';
 import { handleDownloadMovie, handleDownloadTv } from './src/routes/downloads/main.js';
 import { handleHealth } from './src/routes/health.js';
 import { authenticateRequest, checkRateLimit, canAccess, issueSessionToken, refreshSessionToken, initAuth } from './src/middleware/auth.js';
 import { wrapUrl } from './src/utils/proxy.js';
 import { handleTestRoute, handleDebugRoute } from './src/routes/test.js';
 import { getUA, validateTmdbId } from './src/utils/helpers.js';
+import VylaSDK from '@vyla-entertainment/sdk';
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -61,6 +62,14 @@ const ROUTE_PATTERNS = {
     downloadMovie: /^\/(?:api\/)?downloads?\/movie\/([^/]+)$/,
     downloadTv: /^\/(?:api\/)?downloads?\/tv\/([^/]+)\/([^/]+)\/([^/]+)$/,
 };
+
+const TMDB_API_KEY = process.env.TMDB_API_KEY;
+if (!TMDB_API_KEY) console.warn('Warning: TMDB_API_KEY not set, imdb-required sources will be unavailable');
+
+// Internal VylaSDK instance
+const sdk = new VylaSDK({
+    tmdbApiKey: TMDB_API_KEY
+});
 
 if (cluster.isPrimary) {
     const cpus = (await import('os')).default.cpus().length;
@@ -142,7 +151,7 @@ if (cluster.isPrimary) {
         }, 500);
     };
 
-    fs.watch('./src/sources', { persistent: false }, scheduleRestart);
+    // fs.watch('./src/sources', { persistent: false }, scheduleRestart);
     watchPaths.forEach(f => { try { fs.watch(f, scheduleRestart); } catch { } });
 
     let pendingForks = 0;
@@ -370,15 +379,7 @@ async function withRetry(fn, attempts = 2, delay = 300) {
     return null;
 }
 
-const ALL_SOURCE_MODULES = Object.fromEntries(
-    await Promise.all(SOURCES.map(async cfg => [cfg.key, await import(`./src/sources/${cfg.sourceFile}.js`)]))
-);
-
-const SOURCE_MODULES = Object.fromEntries(
-    Object.entries(ALL_SOURCE_MODULES).filter(([key]) => !SOURCE_MAP[key]?.disabled)
-);
-
-const ACTIVE_SOURCES = SOURCES.filter(c => !c.disabled);
+const ACTIVE_SOURCES = sdk.getSources(true);
 const PROXY_PARAM_MAP = new Map(ACTIVE_SOURCES.map(cfg => [cfg.proxyParam, cfg]));
 
 const BLOCKED_IPS = new Set([]);
@@ -463,7 +464,7 @@ async function fetchUpstream(url, extraHeaders = {}, timeoutMs = 30_000) {
 }
 
 async function verifyStream(rawUrl, sourceKey, extraHeaders = {}) {
-    const cfg = SOURCE_MAP[sourceKey];
+    const cfg = sdk.getSources().find(c => c.key === sourceKey);
     if (cfg?.skipVerify) return true;
 
     const cacheKey = `vstream-${rawUrl}`;
@@ -580,7 +581,7 @@ async function getMetadata(id, s, e) {
 }
 
 function applyCdnHeaders(cleanUrl, extraHeaders, sourceKey) {
-    const cfg = SOURCE_MAP[sourceKey];
+    const cfg = sdk.getSources().find(c => c.key === sourceKey);
     if (!cfg?.cdnHeaders) return;
     for (const rule of cfg.cdnHeaders) {
         if (rule.pattern.test(cleanUrl)) { Object.assign(extraHeaders, rule.headers); return; }
@@ -588,33 +589,20 @@ function applyCdnHeaders(cleanUrl, extraHeaders, sourceKey) {
 }
 
 function fetchSource(cfg, cacheKey, id, s, e, clientIP, absoluteBase) {
-    const mod = SOURCE_MODULES[cfg.key];
-    const audio = /dub$/.test(cfg.key) ? 'dub' : 'sub';
-    const streamArgs = extra => ({ id, s, e, clientIP, absoluteBase: extra || absoluteBase, audio, config: cfg });
+    // const mod = SOURCE_MODULES[cfg.key];
+    // const audio = /dub$/.test(cfg.key) ? 'dub' : 'sub';
+    // const streamArgs = extra => ({ id, s, e, clientIP, absoluteBase: extra || absoluteBase, audio, config: cfg });
 
     if (cfg.skipCache) {
         return withTimeout(
-            jitter(cfg.jitter).then(() => withRetry(() => mod.getStream(streamArgs()), cfg.retries, 300)),
+            jitter(cfg.jitter).then(() => withRetry(() => sdk.getStream(cfg.key, id, s, e, clientIP), cfg.retries, 300)),
             cfg.timeout
         );
     }
 
-    if (cfg.multiBase) {
-        return withTimeout(jitter(cfg.jitter).then(async () => {
-            for (const base of mod.BASES) {
-                const res = await getSharedCached(
-                    `${cfg.key}-${base}-${cacheKey}`,
-                    () => withRetry(() => mod.getStream(streamArgs(base)), cfg.retries, 300)
-                );
-                if (res) return res;
-            }
-            return null;
-        }), cfg.timeout);
-    }
-
     return withTimeout(
         jitter(cfg.jitter).then(() =>
-            getSharedCached(`${cfg.key}-${cacheKey}`, () => withRetry(() => mod.getStream(streamArgs()), cfg.retries, 300))
+            getSharedCached(`${cfg.key}-${cacheKey}`, () => withRetry(() => sdk.getStream(cfg.key, id, s, e, clientIP), cfg.retries, 300))
         ),
         cfg.timeout
     );
@@ -634,11 +622,11 @@ function normalizeCandidates(rawResult) {
     return candidates;
 }
 
-async function handleTestSource(sourceKey, id, s, e, clientIP, host) {
+async function handleTestSource(sdk, sourceKey, id, s, e, clientIP, host) {
     const start = Date.now();
-    const cfg = SOURCE_MAP[sourceKey];
+    const sources = sdk.getSources();
+    const cfg = sources.find(c => c.key === sourceKey);
     const absoluteBase = getAbsoluteBase(host);
-    const mod = SOURCE_MODULES[sourceKey];
 
     const respond = (ok, url, raw_url, error, debug) => ({
         status: 200,
@@ -690,13 +678,13 @@ async function handleTestSource(sourceKey, id, s, e, clientIP, host) {
 
             try {
                 rawResult = await fetchSource(cfg, `${id}-${s ?? ''}-${e ?? ''}`, id, s, e, clientIP, absoluteBase);
-                if (!rawResult) rawResult = await withTimeout(mod.getStream({ id, s, e, clientIP: null, absoluteBase, audio, config: cfg }), 20_000);
+                if (!rawResult) rawResult = await withTimeout(sdk.getStream(sourceKey, id, s, e), 20_000);
             } catch (err) { fetchError = err.message; }
 
             const candidates = normalizeCandidates(rawResult);
 
             for (const candidate of candidates) {
-                const wrappedUrl = wrapUrl(candidate, sourceKey, absoluteBase, SOURCE_MAP);
+                const wrappedUrl = wrapUrl(candidate, sourceKey, absoluteBase, sdk);
                 if (!wrappedUrl) continue;
 
                 if (candidate.type === 'dash' || /\.mpd(\?|$)/i.test(candidate.url)) {
@@ -856,7 +844,7 @@ async function streamSources(sources, id, s, e, clientIP, absoluteBase, res) {
     const promises = sources.map(async cfg => {
         if (closed) return;
         try {
-            const result = await handleTestSource(cfg.key, id, s, e, clientIP, host);
+            const result = await handleTestSource(sdk, cfg.key, id, s, e, clientIP, host);
             if (closed) return;
             const parsed = JSON.parse(result.body);
             debugResults.push({ source: cfg.key, ok: parsed.ok, error: parsed.error || null, elapsed_ms: parsed.elapsed_ms });
@@ -952,7 +940,7 @@ async function handleRequest(req, res) {
     }
 
     if (pathname === '/health' || pathname === '/api/health') {
-        const result = await handleHealth(SOURCE_MODULES, mainCache);
+        const result = await handleHealth(sdk, mainCache);
         return { ...result, headers: { ...result.headers, ...CORS_HEADERS } };
     }
 
@@ -998,11 +986,7 @@ async function handleRequest(req, res) {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no', ...CORS_HEADERS });
         const [meta, subtitles] = await Promise.all([
             getMetadata(id, null, null),
-            fetchSubtitles([
-                { base: SUBTITLE_BASES[0], path: `/movie/${id}` },
-                { base: SUBTITLE_BASES[1], path: `/movie/${id}` },
-                { base: SUBTITLE_BASES[2], path: `/movie/tt${id}` }
-            ])
+            sdk.getSubtitles(id, null, null)
         ]);
 
         if (!res.writableEnded && !res.destroyed) {
@@ -1030,11 +1014,7 @@ async function handleRequest(req, res) {
 
         const [meta, subtitles] = await Promise.all([
             getMetadata(id, s, e),
-            fetchSubtitles([
-                { base: SUBTITLE_BASES[0], path: `/tv/${id}/${s}/${e}` },
-                { base: SUBTITLE_BASES[1], path: `/tv/${id}/${s}/${e}` },
-                { base: SUBTITLE_BASES[2], path: `/tv/tt${id}/${s}/${e}` }
-            ])
+            sdk.getSubtitles(id, s, e)
         ]);
 
         if (!res.writableEnded && !res.destroyed) {
@@ -1062,36 +1042,36 @@ async function handleRequest(req, res) {
     match = ROUTE_PATTERNS.subtitleMovie.exec(pathname);
     if (match) {
         googleAnalytic('subtitles_movie', { id: match[1] });
-        return handleSubtitleMovie(match[1], CORS_HEADERS);
+        return handleSubtitleMovie(match[1], CORS_HEADERS, sdk);
     }
 
     match = ROUTE_PATTERNS.subtitleTv.exec(pathname);
     if (match) {
         googleAnalytic('subtitles_tv', { id: match[1], season: match[2], episode: match[3] });
-        return handleSubtitleTv(match[1], match[2], match[3], CORS_HEADERS);
+        return handleSubtitleTv(match[1], match[2], match[3], CORS_HEADERS, sdk);
     }
 
     match = ROUTE_PATTERNS.downloadMovie.exec(pathname);
     if (match) {
         googleAnalytic('downloads_movie', { id: match[1] });
-        return handleDownloadMovie(match[1], CORS_HEADERS);
+        return handleDownloadMovie(match[1], CORS_HEADERS, sdk);
     }
 
     match = ROUTE_PATTERNS.downloadTv.exec(pathname);
     if (match) {
         googleAnalytic('downloads_tv', { id: match[1], season: match[2], episode: match[3] });
-        return handleDownloadTv(match[1], match[2], match[3], CORS_HEADERS);
+        return handleDownloadTv(match[1], match[2], match[3], CORS_HEADERS, sdk);
     }
 
     match = ROUTE_PATTERNS.test.exec(pathname);
     if (match) {
-        const result = await handleTestRoute(match, searchParams, clientIP, reqUrl.host, handleTestSource, googleAnalytic);
+        const result = await handleTestRoute(sdk, match, searchParams, clientIP, reqUrl.host, handleTestSource, googleAnalytic);
         return { status: result.status, body: result.body, headers: JSON_CORS };
     }
 
     match = ENABLE_DEBUG_ROUTE ? ROUTE_PATTERNS.debug.exec(pathname) : null;
     if (match) {
-        const result = await handleDebugRoute(match, searchParams, absoluteBase, _nativeFetch, verifyPlayable, SOURCE_MODULES);
+        const result = await handleDebugRoute(sdk, match, searchParams, absoluteBase, _nativeFetch, verifyPlayable);
         return { status: result.status, body: result.body, headers: JSON_CORS };
     }
 
