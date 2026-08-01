@@ -589,15 +589,28 @@ function applyCdnHeaders(cleanUrl, extraHeaders, sourceKey) {
 }
 
 function fetchSource(cfg, cacheKey, id, s, e, clientIP, absoluteBase) {
-    // const mod = SOURCE_MODULES[cfg.key];
-    // const audio = /dub$/.test(cfg.key) ? 'dub' : 'sub';
-    // const streamArgs = extra => ({ id, s, e, clientIP, absoluteBase: extra || absoluteBase, audio, config: cfg });
+    function fixSource(url) {
+        if(url.includes('/api?url=')) {
+            return `${absoluteBase}/api?url=${encodeURIComponent(url)}`;
+        }
+        return url;
+    }
+
+    function applyFix(result) {
+        if (result && Array.isArray(result.allUrls)) {
+            result.allUrls = result.allUrls.map(entry => ({
+                ...entry,
+                url: fixSource(entry.url)
+            }));
+        }
+        return result;
+    }
 
     if (cfg.skipCache) {
         return withTimeout(
             jitter(cfg.jitter).then(() => withRetry(() => sdk.getStream(cfg.key, id, s, e, clientIP), cfg.retries, 300)),
             cfg.timeout
-        );
+        ).then(applyFix);
     }
 
     return withTimeout(
@@ -605,7 +618,7 @@ function fetchSource(cfg, cacheKey, id, s, e, clientIP, absoluteBase) {
             getSharedCached(`${cfg.key}-${cacheKey}`, () => withRetry(() => sdk.getStream(cfg.key, id, s, e, clientIP), cfg.retries, 300))
         ),
         cfg.timeout
-    );
+    ).then(applyFix);
 }
 
 function normalizeCandidates(rawResult) {
