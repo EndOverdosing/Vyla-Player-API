@@ -590,7 +590,7 @@ function applyCdnHeaders(cleanUrl, extraHeaders, sourceKey) {
 
 function fetchSource(cfg, cacheKey, id, s, e, clientIP, absoluteBase) {
     function fixSource(url) {
-        if(url.includes('/api?url=')) {
+        if (url.includes('/api?url=')) {
             return `${absoluteBase}/api?url=${encodeURIComponent(url)}`;
         }
         return url;
@@ -917,7 +917,10 @@ async function handleRequest(req, res) {
     }
 
     if (pathname === '/api/auth' && req.method === 'POST') {
-        if (authResult.bypassed || authResult.type === 'player') {
+        if (authResult.bypassed) {
+            return respondJson(200, { token: issueSessionToken('standard', 'bypassed') });
+        }
+        if (authResult.type === 'player') {
             return respondJson(401, { error: 'API key required for session token generation' });
         }
         return respondJson(200, { token: issueSessionToken(authResult.type, authResult.key) });
@@ -1154,19 +1157,19 @@ async function handleRequest(req, res) {
 
                     const isKey = cleanUrl.endsWith('.key') || ct.includes('octet-stream') && cleanUrl.includes('mon.key');
                     if (isKey) {
-                        if (!upstream.ok) return { status: upstream.status, body: `upstream ${upstream.status}`, headers: { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' } };
+                        if (!upstream.ok) return { status: upstream.status, body: `upstream ${upstream.status}`, headers: { 'Content-Type': 'text/plain', ...CORS_HEADERS } };
                         const keyBytes = Buffer.from(await upstream.arrayBuffer());
-                        return { status: 200, body: keyBytes, headers: { 'Content-Type': 'application/octet-stream', 'Access-Control-Allow-Origin': '*' } };
+                        return { status: 200, body: keyBytes, headers: { 'Content-Type': 'application/octet-stream', ...CORS_HEADERS } };
                     }
 
                     if (isTikTok || isPngMasked || needsStrip) {
-                        if (!upstream.ok) return { status: upstream.status, body: `upstream ${upstream.status}`, headers: { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' } };
+                        if (!upstream.ok) return { status: upstream.status, body: `upstream ${upstream.status}`, headers: { 'Content-Type': 'text/plain', ...CORS_HEADERS } };
                         const full = Buffer.from(await upstream.arrayBuffer());
                         const stripped = (full[0] === 0x89 || full[0] === 0xFF || full[0] === 0x00) ? full.subarray(120) : full;
-                        return { status: 200, body: stripped, headers: { 'Content-Type': 'video/MP2T', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=3600' } };
+                        return { status: 200, body: stripped, headers: { 'Content-Type': 'video/MP2T', ...CORS_HEADERS, 'Cache-Control': 'public, max-age=3600' } };
                     }
 
-                    if (!upstream.ok) return { status: upstream.status, body: `upstream ${upstream.status}`, headers: { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' } };
+                    if (!upstream.ok) return { status: upstream.status, body: `upstream ${upstream.status}`, headers: { 'Content-Type': 'text/plain', ...CORS_HEADERS } };
 
                     const rangeHeader = req.headers['range'];
                     const streamUpstream = rangeHeader
@@ -1176,8 +1179,8 @@ async function handleRequest(req, res) {
                     const responseHeaders = {
                         'Content-Type': isMkv || ct === 'application/octet-stream' ? 'video/mp4' : (ct || 'video/mp4'),
                         'Accept-Ranges': 'bytes',
-                        'Access-Control-Allow-Origin': '*',
                         'Cache-Control': 'no-store',
+                        ...CORS_HEADERS,
                     };
                     if (streamUpstream.headers.has('content-length')) responseHeaders['Content-Length'] = streamUpstream.headers.get('content-length');
                     if (streamUpstream.headers.has('content-range')) responseHeaders['Content-Range'] = streamUpstream.headers.get('content-range');
